@@ -58,6 +58,8 @@
 
    - Il peut s'agir d'un plan de tests manuels ou de tests automatisés à l'aide d'une librairie de tests comme **JUnit**
 
+   Plan fourni (manuel) : [docs/Plan_Tests.md](docs/Plan_Tests.md)
+
 {: .warning-title}
 > Note sur la préparation en cuisine
 >
@@ -66,12 +68,12 @@
 ## Évaluation
 
 
-| Critère                                     | Points |
-| ---------------------------------------------- | -------- |
+| Critère                                      | Points |
+| -------------------------------------------- | ------ |
 | 1. Analyse SOLID                             | 5      |
-| 2. Amélioration du code                     | 5      |
-| 3. Ajout des nouvelles fonctionnalités      | 5      |
-| 4. Amélioration du système de notification | 2      |
+| 2. Amélioration du code                      | 5      |
+| 3. Ajout des nouvelles fonctionnalités       | 5      |
+| 4. Amélioration du système de notification   | 2      |
 | 5. Ajustement de la classe`App`              | 2      |
 | 6. Diagramme UML                             | 3      |
 | 7. Plan de tests                             | 3      |

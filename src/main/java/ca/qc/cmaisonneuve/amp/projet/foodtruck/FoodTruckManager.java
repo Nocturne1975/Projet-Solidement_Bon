@@ -3,6 +3,17 @@ package ca.qc.cmaisonneuve.amp.projet.foodtruck;
 
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineCompleteService;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineFroideService;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.EpiceOption;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.ExtraFromageOption;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.Menu;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.Plat;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.SaladeTaille;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.SaladeTailleOption;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.SaladeVinaigrette;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.SaladeVinaigretteOption;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.notification.OrderEvent;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.notification.OrderEventPublisher;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.notification.OrderEventType;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.paiement.PaymentGateway;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.persistence.SqlDatabasePersistence;
 
@@ -11,133 +22,151 @@ import ca.qc.cmaisonneuve.amp.projet.foodtruck.persistence.SqlDatabasePersistenc
  */
 public class FoodTruckManager {
 
-    /** Constante qui définit le caractère de saut de ligne */
-    private static final String LINE_SEPARATOR = System.lineSeparator();
-
     private PaymentGateway paymentGateway = new PaymentGateway();
     private SqlDatabasePersistence database = new SqlDatabasePersistence();
 
     private CuisineCompleteService cuisine = new CuisineCompleteService();
     private CuisineFroideService comptoirFroid = new CuisineFroideService();
 
-    public void traiterCommande(String email, String type, boolean extraFromage, boolean epice, String modePaiement) {
+    private final Menu menu = new Menu();
 
-        // Calcul du prix
-        double prix = 0.0;
-        if ("BURGER".equals(type)) {
-            prix = 8.0;
-            if (extraFromage) {
-                prix = prix + 1.0;
-            }
-            if (epice) {
-                prix = prix + 0.5;
-            }
-        } else if ("TACO".equals(type)) {
-            prix = 7.0;
-            if (extraFromage) {
-                prix = prix + 0.5;
-            }
-            if (epice) {
-                prix = prix + 0.5;
-            }
-        } else if ("WRAP".equals(type)) {
-            prix = 6.5;
-            if (extraFromage) {
-                prix = prix + 0.8;
-            }
-        } else {
-            System.out.println("Type de plat inconnu: " + type);
-        }
+    private final OrderEventPublisher eventPublisher;
 
-        // Paiement
-        if ("CARTE".equals(modePaiement)) {
-            paymentGateway.payerCarte(prix);
-        } else if ("COMPTANT".equals(modePaiement)) {
-            paymentGateway.payerComptant(prix);
-        } else {
-            paymentGateway.echec("Mode de paiement non pris en charge");
-        }
-
-        // Sauvegarde de la commande en base de données
-        database.sauvegarderCommande(email, type, prix, extraFromage, epice);
-
-        // Envoi de la notification au client - seulement par courriel pour l'instant...
-        envoyerCourriel(email, "SOLIDEMENT Bon - Confirmation de commande",
-                "Votre commande de %s est en preparation.".formatted(type), type, prix);
-
-        // Envoi en cuisine
-        String status = prepare(type, epice, extraFromage);
-        System.out.println("[Journal] Commande " + status);
+    public FoodTruckManager() {
+        this(new OrderEventPublisher());
     }
 
-    // Préparation d'une commande en cuisine
-    private String prepare(String itemType, boolean epice, boolean extraFromage) {
-        return switch (itemType) {
-            case "BURGER" -> prepareBurger(epice, extraFromage);
-            case "TACO" -> prepareTaco(epice, extraFromage);
-            case "WRAP" -> prepareWrap(epice, extraFromage);
-            default -> "annulee";
+    public FoodTruckManager(OrderEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher != null ? eventPublisher : new OrderEventPublisher();
+    }
+
+    public void traiterCommande(String email, String type, boolean extraFromage, boolean epice, String modePaiement) {
+        traiterCommande(email, type, extraFromage, epice, modePaiement, null, null);
+    }
+
+    public void traiterCommande(String destinataire,
+            String type,
+            boolean extraFromage,
+            boolean epice,
+            String modePaiement,
+            String tailleSalade,
+            String vinaigretteSalade) {
+
+        Plat plat = buildPlat(type, extraFromage, epice, tailleSalade, vinaigretteSalade);
+        if (plat == null) {
+            System.out.println("Type de plat inconnu: " + type);
+            return;
+        }
+
+        double prix = plat.getPrix();
+
+        // Paiement
+        paymentGateway.payer(modePaiement, prix);
+
+        // Sauvegarde de la commande en base de données
+        database.sauvegarderCommande(destinataire, plat.getType(), prix, extraFromage, epice);
+
+        // Notification (Observer): commande placée
+        eventPublisher.publish(new OrderEvent(OrderEventType.PLACED, destinataire, plat.getDescription(), prix));
+
+        // Envoi en cuisine
+        PreparationResult result = prepare(plat);
+        System.out.println("[Journal] Commande " + result.statusMessage());
+
+        // Notification (Observer): commande prête
+        if (result.success()) {
+            eventPublisher.publish(new OrderEvent(OrderEventType.READY, destinataire, plat.getDescription(), prix));
+        }
+    }
+
+    private PreparationResult prepare(Plat plat) {
+        return switch (plat.getType()) {
+            case "BURGER" -> prepareBurger(plat);
+            case "TACO" -> prepareTaco(plat);
+            case "WRAP" -> prepareWrap(plat);
+            case "SALADE" -> prepareSalade(plat);
+            default -> new PreparationResult(false, "annulee");
         };
     }
 
-    private String prepareBurger(boolean epice, boolean extraFromage) {
+    private PreparationResult prepareBurger(Plat plat) {
         boolean success = cuisine.cuire("BURGER")
                 && cuisine.assembler("BURGER")
-                && cuisine.ajouterExtras("BURGER", extraFromage, epice)
+            && cuisine.ajouterExtras("BURGER", plat.hasExtraFromage(), plat.isEpice())
                 && cuisine.garderAuChaud("BURGER");
 
-        return "%s (burger %s%s)".formatted(success ? "prete" : "annulee", epice ? "epice" : "regulier",
-                extraFromage ? " extra fromage" : "");
+        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
+        return new PreparationResult(success, status);
     }
 
-    private String prepareTaco(boolean epice, boolean extraFromage) {
+    private PreparationResult prepareTaco(Plat plat) {
         boolean success = cuisine.cuire("TACO")
                 && cuisine.assembler("TACO")
-                && cuisine.ajouterExtras("TACO", extraFromage, epice)
+            && cuisine.ajouterExtras("TACO", plat.hasExtraFromage(), plat.isEpice())
                 && cuisine.garderAuChaud("TACO");
-        return "%s (taco %s%s)".formatted(success ? "prete" : "annulee", epice ? "epice" : "regulier",
-                extraFromage ? " extra fromage" : "");
+        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
+        return new PreparationResult(success, status);
     }
 
-    private String prepareWrap(boolean epice, boolean extraFromage) {
+    private PreparationResult prepareWrap(Plat plat) {
         boolean success = comptoirFroid.assembler("WRAP")
-                && comptoirFroid.ajouterExtras("WRAP", extraFromage, epice)
+            && comptoirFroid.ajouterExtras("WRAP", plat.hasExtraFromage(), plat.isEpice())
                 && comptoirFroid.garderAuFrais("WRAP");
-        return "%s (wrap %s%s)".formatted(success ? "prete" : "annulee", epice ? "epice" : "regulier",
-                extraFromage ? " extra fromage" : "");
+        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
+        return new PreparationResult(success, status);
     }
 
-    // Formattage et envoi d'un courriel de confirmation au client
-    private void envoyerCourriel(String destinataire,
-            String sujet,
-            String corpsTexte,
-            String typeCommande,
-            double montant) {
-        // Génération d'un identifiant de message "factice"
-        String messageId = "MSG-" + System.currentTimeMillis();
+    private PreparationResult prepareSalade(Plat plat) {
+        boolean success = comptoirFroid.assembler("SALADE")
+            && comptoirFroid.ajouterExtras("SALADE", plat.hasExtraFromage(), plat.isEpice())
+                && comptoirFroid.garderAuFrais("SALADE");
+        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
+        return new PreparationResult(success, status);
+    }
 
-        // Formattage de base d'un courriel
-        String separateur = "--------------------------------------------------";
-        StringBuilder sb = new StringBuilder();
-        sb.append(LINE_SEPARATOR).append(separateur).append(LINE_SEPARATOR);
-        sb.append("SOLIDement Bon - Notification de commande").append(LINE_SEPARATOR);
-        sb.append("Message-ID : ").append(messageId).append(LINE_SEPARATOR);
-        sb.append("A          : ").append(destinataire != null ? destinataire : "(inconnu)").append(LINE_SEPARATOR);
-        sb.append("Sujet      : ").append(sujet != null ? sujet : "(sans sujet)").append(LINE_SEPARATOR);
-        sb.append(separateur).append(LINE_SEPARATOR);
-        sb.append("Resume de la commande").append(LINE_SEPARATOR);
-        sb.append(" - Type : ").append(typeCommande != null ? typeCommande : "(inconnu)").append(LINE_SEPARATOR);
-        sb.append(" - Montant : ").append(String.format(java.util.Locale.CANADA_FRENCH, "%.2f $", montant))
-                .append(LINE_SEPARATOR);
-        sb.append(separateur).append(LINE_SEPARATOR);
-        sb.append("Message :").append(LINE_SEPARATOR);
-        sb.append(corpsTexte != null ? corpsTexte : "(aucun contenu)").append(LINE_SEPARATOR);
-        sb.append(separateur).append(LINE_SEPARATOR);
-        sb.append("Courriel envoye. ").append(LINE_SEPARATOR);
+    private Plat buildPlat(String type,
+            boolean extraFromage,
+            boolean epice,
+            String tailleSalade,
+            String vinaigretteSalade) {
+        Plat plat = menu.createBase(type);
+        if (plat == null) {
+            return null;
+        }
 
-        // "Envoi" (simulation) : écriture dans la console
-        System.out.println(sb.toString());
-        System.out.println("[Journal] Courriel envoye a " + destinataire + " avec Message-ID " + messageId + ".");
+        if ("SALADE".equals(plat.getType())) {
+            SaladeTaille taille = SaladeTaille.parse(tailleSalade);
+            SaladeVinaigrette vinaigrette = SaladeVinaigrette.parse(vinaigretteSalade);
+            plat = new SaladeTailleOption(plat, taille);
+            plat = new SaladeVinaigretteOption(plat, vinaigrette);
+        }
+
+        if (extraFromage) {
+            plat = new ExtraFromageOption(plat);
+        }
+        if (epice) {
+            plat = new EpiceOption(plat);
+        }
+
+        return plat;
+    }
+
+    private static final class PreparationResult {
+        private final boolean success;
+        private final String statusMessage;
+
+        private PreparationResult(boolean success, String statusMessage) {
+            this.success = success;
+            this.statusMessage = statusMessage;
+        }
+
+        public boolean success() {
+            return success;
+        }
+
+        public String statusMessage() {
+            return statusMessage;
+        }
     }
 
 }
