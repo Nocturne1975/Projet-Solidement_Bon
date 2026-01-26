@@ -2,21 +2,11 @@
 package ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine;
 
 /**
- * Implémentation de CuisineService représentant une station froide,
- * c'est-à-dire une mini-cuisine qui ne peut qu'assembler des plats froids (pas
- * de four ou autres éléments chauffants). Dans le food truck, on pourrait par
- * exemple imaginer un petit comptoir sur le côté où on assemble uniquement les
- * plats ne demandant aucune cuisson (ingrédients froids seulement), permettant
- * ainsi de libérer de l'espace dans la cuisine principale et de traiter plus de
- * commandes en parallèle.
+ * Représente une station froide (pas de cuisson ni de maintien au chaud).
+ *
+ * ISP/LSP: la station froide n'expose pas les capacités qu'elle ne supporte pas.
  */
-public class CuisineFroideService implements CuisineService {
-
-    @Override
-    public boolean cuire(String itemType) {
-        throw new UnsupportedOperationException(
-                "Cuisine froide: Impossible de cuire le plat %s: grill non disponible!".formatted(itemType));
-    }
+public class CuisineFroideService implements CuisineFroideStation {
 
     @Override
     public boolean assembler(String itemType) {
@@ -29,13 +19,6 @@ public class CuisineFroideService implements CuisineService {
     public boolean garderAuFrais(String itemType) {
         System.out.println("Cuisine froide: plat %s mis dans une glaciere".formatted(itemType));
         return true;
-    }
-
-    @Override
-    public boolean garderAuChaud(String itemType) {
-        throw new UnsupportedOperationException(
-                "Cuisine froide: Impossible de garder le plat %s au chaud: rechaud non disponible!"
-                        .formatted(itemType));
     }
 
     @Override

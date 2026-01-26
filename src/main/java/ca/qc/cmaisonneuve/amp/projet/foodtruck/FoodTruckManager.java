@@ -3,6 +3,8 @@ package ca.qc.cmaisonneuve.amp.projet.foodtruck;
 
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineCompleteService;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineFroideService;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineFroideStation;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineService;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.EpiceOption;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.ExtraFromageOption;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.Menu;
@@ -25,8 +27,8 @@ public class FoodTruckManager {
     private PaymentGateway paymentGateway = new PaymentGateway();
     private SqlDatabasePersistence database = new SqlDatabasePersistence();
 
-    private CuisineCompleteService cuisine = new CuisineCompleteService();
-    private CuisineFroideService comptoirFroid = new CuisineFroideService();
+    private CuisineService cuisine = new CuisineCompleteService();
+    private CuisineFroideStation comptoirFroid = new CuisineFroideService();
 
     private final Menu menu = new Menu();
 

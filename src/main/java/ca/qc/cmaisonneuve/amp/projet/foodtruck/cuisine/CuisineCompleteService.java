@@ -2,11 +2,10 @@
 package ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine;
 
 /**
- * Implémentation de CuisineService qui représente une cuisine complète,
- * c'est-à-dire une cuisine où fours, friteuses et autres éléments chauffants
- * sont disponibles. On peut y préparer les plats chauds ou les plats froids.
- * Dans le food truck, cette cuisine correspondrait à l'espace de cuisine
- * principal à l'intérieur.
+ * Représente une cuisine complète (fours, friteuses, éléments chauffants).
+ *
+ * ISP: cette classe expose uniquement des capacités via des interfaces fines
+ * (cuisson/assemblage/extras/conservation).
  */
 public class CuisineCompleteService implements CuisineService {
 

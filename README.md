@@ -20,6 +20,8 @@
    - Identification des violations aux principes SOLID présentes dans l'application initiale
    - Explication du principe non respecté
 
+   Analyse fournie : [docs/Analyse_SOLID.md](docs/Analyse_SOLID.md)
+
 1. **Amélioration du code**
 
    - Pour chaque principe SOLID non respecté, fournir une nouvelle implémentation qui corrige le problème.
@@ -53,6 +55,8 @@
 1. **Diagramme UML de classes** pour la partie refactorisée.
 
    - Ce diagramme peut être réalisé à l'aide d'un logiciel, ou fait à la main puis remis sous forme d'image (à condition qu'il soit lisible)
+
+   Diagramme fourni (Mermaid) : [docs/UML.md](docs/UML.md)
 
 1. **Plan de tests** pour valider le comportement.
 
