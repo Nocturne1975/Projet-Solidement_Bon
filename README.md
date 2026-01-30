@@ -99,5 +99,7 @@
 
 ```bash
 mvn clean package
-java -jar <nom du fichier>.jar
+java -jar food-truck.jar
 ```
+
+Note: le `pom.xml` copie automatiquement le JAR exécutable à la racine du projet lors du `package`.
