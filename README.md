@@ -1,5 +1,7 @@
 # Projet : Amélioration d'une applications de gestion des commandes d'un *food truck*
 
+## Equipe: Asma Ajourdi, Sonia Mhimdi, Marina Kamel, Sonia Corbin
+
 ## Mise en situation
 
 Ça y est! Après des mois de travail acharné pour raffiner son modèle d'affaires, votre cousin est finalement prêt à lancer SOLIDEMENT Bon, un *food truck* qui se promènera partout au Québec au gré des différents événements et festivals. Pendant qu'il se concentrait sur le lancement de son entreprise, il a confié le développement de l'application de gestion de commandes et de paiement à une firme externe. Ne disposant pas de beaucoup de moyens au départ, il a donné le contrat à la firme qui offrait le plus bas prix, même si elle semblait un peu louche.
