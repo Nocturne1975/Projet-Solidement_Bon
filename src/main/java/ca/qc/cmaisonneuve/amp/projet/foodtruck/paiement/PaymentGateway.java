@@ -7,7 +7,7 @@ import java.util.Map;
 /**
  * Passerelle de paiement, qui permet de payer en utilisant divers modes de paiement.
  */
-public class PaymentGateway {
+public class PaymentGateway implements PaymentProcessor {
 
     private final Map<String, PaymentMethod> methods = new HashMap<>();
 
@@ -19,13 +19,14 @@ public class PaymentGateway {
         register("VIREMENT", new BankTransferPayment());
     }
 
-    public void register(String code, PaymentMethod method) {
+    public final void register(String code, PaymentMethod method) {
         if (code == null || method == null) {
             return;
         }
         methods.put(code.trim().toUpperCase(), method);
     }
 
+    @Override
     public boolean payer(String modePaiement, double montant) {
         String key = modePaiement == null ? "" : modePaiement.trim().toUpperCase();
         PaymentMethod method = methods.get(key);

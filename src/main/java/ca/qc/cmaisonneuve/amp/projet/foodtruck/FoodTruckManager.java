@@ -1,10 +1,18 @@
 
 package ca.qc.cmaisonneuve.amp.projet.foodtruck;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineCompleteService;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineFroideService;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineFroideStation;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.CuisineService;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.preparation.BurgerPreparation;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.preparation.PreparationStrategy;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.preparation.SaladePreparation;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.preparation.TacoPreparation;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.cuisine.preparation.WrapPreparation;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.EpiceOption;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.ExtraFromageOption;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.menu.Menu;
@@ -17,6 +25,8 @@ import ca.qc.cmaisonneuve.amp.projet.foodtruck.notification.OrderEvent;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.notification.OrderEventPublisher;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.notification.OrderEventType;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.paiement.PaymentGateway;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.paiement.PaymentProcessor;
+import ca.qc.cmaisonneuve.amp.projet.foodtruck.persistence.OrderPersistence;
 import ca.qc.cmaisonneuve.amp.projet.foodtruck.persistence.SqlDatabasePersistence;
 
 /**
@@ -24,13 +34,15 @@ import ca.qc.cmaisonneuve.amp.projet.foodtruck.persistence.SqlDatabasePersistenc
  */
 public class FoodTruckManager {
 
-    private PaymentGateway paymentGateway = new PaymentGateway();
-    private SqlDatabasePersistence database = new SqlDatabasePersistence();
+    private final PaymentProcessor paymentProcessor;
+    private final OrderPersistence database;
 
-    private CuisineService cuisine = new CuisineCompleteService();
-    private CuisineFroideStation comptoirFroid = new CuisineFroideService();
+    private final CuisineService cuisine;
+    private final CuisineFroideStation comptoirFroid;
 
-    private final Menu menu = new Menu();
+    private final Menu menu;
+
+    private final Map<String, PreparationStrategy> preparations = new HashMap<>();
 
     private final OrderEventPublisher eventPublisher;
 
@@ -39,7 +51,29 @@ public class FoodTruckManager {
     }
 
     public FoodTruckManager(OrderEventPublisher eventPublisher) {
+        this(eventPublisher,
+                new Menu(),
+                new PaymentGateway(),
+                new SqlDatabasePersistence(),
+                new CuisineCompleteService(),
+                new CuisineFroideService());
+    }
+
+    public FoodTruckManager(OrderEventPublisher eventPublisher,
+            Menu menu,
+            PaymentProcessor paymentProcessor,
+            OrderPersistence database,
+            CuisineService cuisine,
+            CuisineFroideStation comptoirFroid) {
+
         this.eventPublisher = eventPublisher != null ? eventPublisher : new OrderEventPublisher();
+        this.menu = menu != null ? menu : new Menu();
+        this.paymentProcessor = paymentProcessor != null ? paymentProcessor : new PaymentGateway();
+        this.database = database != null ? database : new SqlDatabasePersistence();
+        this.cuisine = cuisine != null ? cuisine : new CuisineCompleteService();
+        this.comptoirFroid = comptoirFroid != null ? comptoirFroid : new CuisineFroideService();
+
+        registerDefaultPreparations();
     }
 
     public void traiterCommande(String email, String type, boolean extraFromage, boolean epice, String modePaiement) {
@@ -63,7 +97,11 @@ public class FoodTruckManager {
         double prix = plat.getPrix();
 
         // Paiement
-        paymentGateway.payer(modePaiement, prix);
+        boolean paiementAccepte = paymentProcessor.payer(modePaiement, prix);
+        if (!paiementAccepte) {
+            System.out.println("[Journal] Commande annulee: paiement refuse.");
+            return;
+        }
 
         // Sauvegarde de la commande en base de données
         database.sauvegarderCommande(destinataire, plat.getType(), prix, extraFromage, epice);
@@ -72,58 +110,39 @@ public class FoodTruckManager {
         eventPublisher.publish(new OrderEvent(OrderEventType.PLACED, destinataire, plat.getDescription(), prix));
 
         // Envoi en cuisine
-        PreparationResult result = prepare(plat);
-        System.out.println("[Journal] Commande " + result.statusMessage());
+        boolean success = prepare(plat);
+        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
+        System.out.println("[Journal] Commande " + status);
 
         // Notification (Observer): commande prête
-        if (result.success()) {
+        if (success) {
             eventPublisher.publish(new OrderEvent(OrderEventType.READY, destinataire, plat.getDescription(), prix));
         }
     }
 
-    private PreparationResult prepare(Plat plat) {
-        return switch (plat.getType()) {
-            case "BURGER" -> prepareBurger(plat);
-            case "TACO" -> prepareTaco(plat);
-            case "WRAP" -> prepareWrap(plat);
-            case "SALADE" -> prepareSalade(plat);
-            default -> new PreparationResult(false, "annulee");
-        };
+    public void registerPreparation(String type, PreparationStrategy strategy) {
+        if (type == null || strategy == null) {
+            return;
+        }
+        preparations.put(type.trim().toUpperCase(), strategy);
     }
 
-    private PreparationResult prepareBurger(Plat plat) {
-        boolean success = cuisine.cuire("BURGER")
-                && cuisine.assembler("BURGER")
-            && cuisine.ajouterExtras("BURGER", plat.hasExtraFromage(), plat.isEpice())
-                && cuisine.garderAuChaud("BURGER");
-
-        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
-        return new PreparationResult(success, status);
+    private void registerDefaultPreparations() {
+        registerPreparation("BURGER", new BurgerPreparation(cuisine));
+        registerPreparation("TACO", new TacoPreparation(cuisine));
+        registerPreparation("WRAP", new WrapPreparation(comptoirFroid));
+        registerPreparation("SALADE", new SaladePreparation(comptoirFroid));
     }
 
-    private PreparationResult prepareTaco(Plat plat) {
-        boolean success = cuisine.cuire("TACO")
-                && cuisine.assembler("TACO")
-            && cuisine.ajouterExtras("TACO", plat.hasExtraFromage(), plat.isEpice())
-                && cuisine.garderAuChaud("TACO");
-        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
-        return new PreparationResult(success, status);
-    }
-
-    private PreparationResult prepareWrap(Plat plat) {
-        boolean success = comptoirFroid.assembler("WRAP")
-            && comptoirFroid.ajouterExtras("WRAP", plat.hasExtraFromage(), plat.isEpice())
-                && comptoirFroid.garderAuFrais("WRAP");
-        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
-        return new PreparationResult(success, status);
-    }
-
-    private PreparationResult prepareSalade(Plat plat) {
-        boolean success = comptoirFroid.assembler("SALADE")
-            && comptoirFroid.ajouterExtras("SALADE", plat.hasExtraFromage(), plat.isEpice())
-                && comptoirFroid.garderAuFrais("SALADE");
-        String status = "%s (%s)".formatted(success ? "prete" : "annulee", plat.getDescription());
-        return new PreparationResult(success, status);
+    private boolean prepare(Plat plat) {
+        if (plat == null) {
+            return false;
+        }
+        PreparationStrategy strategy = preparations.get(plat.getType());
+        if (strategy == null) {
+            return false;
+        }
+        return strategy.prepare(plat);
     }
 
     private Plat buildPlat(String type,
@@ -151,24 +170,6 @@ public class FoodTruckManager {
         }
 
         return plat;
-    }
-
-    private static final class PreparationResult {
-        private final boolean success;
-        private final String statusMessage;
-
-        private PreparationResult(boolean success, String statusMessage) {
-            this.success = success;
-            this.statusMessage = statusMessage;
-        }
-
-        public boolean success() {
-            return success;
-        }
-
-        public String statusMessage() {
-            return statusMessage;
-        }
     }
 
 }
