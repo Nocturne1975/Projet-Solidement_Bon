@@ -1,6 +1,6 @@
 # Projet : Amélioration d'une applications de gestion des commandes d'un *food truck*
 
-## Equipe: Asma Ajourdi, Sonia Mhimdi, Marina Kamel, Sonia Corbin
+## Equipe: Asma Ajourdi, Sonia Mhimdi, Sonia Corbin
 
 ## Mise en situation
 
