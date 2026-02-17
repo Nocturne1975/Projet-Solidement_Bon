@@ -1,130 +1,169 @@
 # Diagramme UML (Mermaid)
 
-```mermaid
 classDiagram
+direction LR
 
-%% =========================
-%% Noyau
-%% =========================
-class FoodTruckManager
-class SqlDatabasePersistence
-class CuisineService {
-  <<interface>>
-}
-class CuisineFroideStation {
-  <<interface>>
-}
-class CuissonService {
-  <<interface>>
-}
-class AssemblageService {
-  <<interface>>
-}
-class ExtrasService {
-  <<interface>>
-}
-class ConservationFroidService {
-  <<interface>>
-}
-class ConservationChaudService {
-  <<interface>>
+%% ====== Commande / orchestration ======
+class FoodTruckManager {
+  -paymentProcessor : PaymentProcessor
+  -database : OrderPersistence
+  -cuisine : CuisineService
+  -comptoirFroid : CuisineFroideStation
+  -menu : Menu
+  -preparations : Map~String, PreparationStrategy~
+  -eventPublisher : OrderEventPublisher
+  +traiterCommande(destinataire, type, extraFromage, epice, modePaiement, tailleSalade, vinaigretteSalade) void
+  +registerPreparation(type, strategy) void
 }
 
-class CuisineCompleteService
-class CuisineFroideService
-
-FoodTruckManager --> SqlDatabasePersistence
-FoodTruckManager --> CuisineService
-FoodTruckManager --> CuisineFroideStation
-
-CuisineService <|.. CuisineCompleteService
-CuisineFroideStation <|.. CuisineFroideService
-
-CuissonService <|-- CuisineService
-AssemblageService <|-- CuisineService
-ExtrasService <|-- CuisineService
-ConservationFroidService <|-- CuisineService
-ConservationChaudService <|-- CuisineService
-
-AssemblageService <|-- CuisineFroideStation
-ExtrasService <|-- CuisineFroideStation
-ConservationFroidService <|-- CuisineFroideStation
-
-%% =========================
-%% Notification (Observer)
-%% =========================
-class OrderEventPublisher
-class OrderEvent
-class OrderEventType {
-  <<enumeration>>
-  PLACED
-  READY
+class Menu {
+  -plats : Map~String, Supplier~
+  +createBase(type) Plat
+  +register(type, factory) void
 }
-class OrderEventListener {
-  <<interface>>
-  +onOrderEvent(event)
-}
-class EmailOrderEventListener
-class SmsOrderEventListener
 
-FoodTruckManager --> OrderEventPublisher : publish()
-OrderEventPublisher "1" o-- "0..*" OrderEventListener : listeners
-OrderEventListener <|.. EmailOrderEventListener
-OrderEventListener <|.. SmsOrderEventListener
-OrderEvent --> OrderEventType
+FoodTruckManager --> Menu : utilise
+FoodTruckManager --> PaymentProcessor : dépend
+FoodTruckManager --> OrderPersistence : dépend
+FoodTruckManager --> OrderEventPublisher : publie
+FoodTruckManager --> PreparationStrategy : exécute
 
-%% =========================
-%% Paiement (Strategy)
-%% =========================
-class PaymentGateway
-class PaymentMethod {
-  <<interface>>
-  +pay(amount)
-}
-class CardPayment
-class CashPayment
-class BankTransferPayment
-
-FoodTruckManager --> PaymentGateway : payer(mode, montant)
-PaymentGateway "1" o-- "0..*" PaymentMethod : registre
-PaymentMethod <|.. CardPayment
-PaymentMethod <|.. CashPayment
-PaymentMethod <|.. BankTransferPayment
-
-%% =========================
-%% Menu / Options (Decorator)
-%% =========================
-class Menu
+%% ====== Plats (Decorator) ======
 class Plat {
   <<interface>>
-  +getType()
-  +getDescription()
-  +getPrix()
+  +getType() String
+  +getDescription() String
+  +getPrix() double
+  +extraFromagePrix() double
+  +epicePrix() double
+  +hasExtraFromage() boolean
+  +isEpice() boolean
 }
-class PlatOptionDecorator
-class ExtraFromageOption
-class EpiceOption
-class SaladeTailleOption
-class SaladeVinaigretteOption
 
 class BurgerPlat
 class TacoPlat
 class WrapPlat
 class SaladePlat
 
-FoodTruckManager --> Menu
-Menu --> Plat : createBase(type)
-
 Plat <|.. BurgerPlat
 Plat <|.. TacoPlat
 Plat <|.. WrapPlat
 Plat <|.. SaladePlat
 
+class PlatOptionDecorator {
+  <<abstract>>
+  #base : Plat
+}
 Plat <|.. PlatOptionDecorator
-PlatOptionDecorator --> Plat : base
+PlatOptionDecorator o-- Plat : wrap
+
+class ExtraFromageOption
+class EpiceOption
+class SaladeTailleOption
+class SaladeVinaigretteOption
 
 PlatOptionDecorator <|-- ExtraFromageOption
 PlatOptionDecorator <|-- EpiceOption
 PlatOptionDecorator <|-- SaladeTailleOption
 PlatOptionDecorator <|-- SaladeVinaigretteOption
-```
+
+Menu --> Plat : crée
+
+%% ====== Paiement (Strategy) ======
+class PaymentProcessor {
+  <<interface>>
+  +payer(mode, montant) boolean
+}
+
+class PaymentGateway {
+  -methods : Map~String, PaymentMethod~
+  +register(code, method) void
+  +payer(mode, montant) boolean
+}
+PaymentProcessor <|.. PaymentGateway
+
+class PaymentMethod {
+  <<interface>>
+  +pay(montant) void
+}
+class CardPayment
+class CashPayment
+class BankTransferPayment
+
+PaymentMethod <|.. CardPayment
+PaymentMethod <|.. CashPayment
+PaymentMethod <|.. BankTransferPayment
+PaymentGateway o-- PaymentMethod : contient
+
+%% ====== Persistance (DIP) ======
+class OrderPersistence {
+  <<interface>>
+  +sauvegarderCommande(dest, type, prix, extraFromage, epice) void
+}
+class SqlDatabasePersistence
+OrderPersistence <|.. SqlDatabasePersistence
+
+%% ====== Notifications (Observer) ======
+class OrderEventPublisher {
+  -listeners : List~OrderEventListener~
+  +addListener(listener) void
+  +removeListener(listener) void
+  +publish(event) void
+}
+
+class OrderEventListener {
+  <<interface>>
+  +onOrderEvent(event) void
+}
+
+class EmailOrderEventListener
+class SmsOrderEventListener
+
+OrderEventListener <|.. EmailOrderEventListener
+OrderEventListener <|.. SmsOrderEventListener
+
+OrderEventPublisher o-- OrderEventListener : notifie
+
+class OrderEvent {
+  -type : OrderEventType
+  -recipient : String
+  -itemType : String
+  -amount : double
+}
+
+class OrderEventType {
+  <<enumeration>>
+  PLACED
+  READY
+}
+
+OrderEvent --> OrderEventType
+OrderEventPublisher --> OrderEvent
+
+%% ====== Cuisine (Strategy préparation) ======
+class PreparationStrategy {
+  <<interface>>
+  +prepare(plat) boolean
+}
+
+class BurgerPreparation
+class TacoPreparation
+class WrapPreparation
+class SaladePreparation
+
+PreparationStrategy <|.. BurgerPreparation
+PreparationStrategy <|.. TacoPreparation
+PreparationStrategy <|.. WrapPreparation
+PreparationStrategy <|.. SaladePreparation
+
+class CuisineService {
+  <<interface>>
+}
+class CuisineFroideStation {
+  <<interface>>
+}
+
+BurgerPreparation --> CuisineService
+TacoPreparation --> CuisineService
+WrapPreparation --> CuisineFroideStation
+SaladePreparation --> CuisineFroideStation
